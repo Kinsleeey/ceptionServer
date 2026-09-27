@@ -1,0 +1,9 @@
+# Never upload installed packages — they're rebuilt from package.json.
+node_modules/
+
+# Never upload secrets.
+.env
+
+# OS / editor noise.
+.DS_Store
+*.log
