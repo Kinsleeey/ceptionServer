@@ -559,3 +559,34 @@ CREATE TABLE IF NOT EXISTS maintenance_requests (
 
 CREATE INDEX IF NOT EXISTS idx_maint_requests_status
   ON maintenance_requests (status, created_at DESC);
+
+-- ===========================================================================
+-- SECTION 14 — MAINTENANCE PAYMENT REQUESTS
+-- ===========================================================================
+
+-- maintenance_requests: the officer asking the admin for money to fix a fault.
+--
+-- Optional — a loose door handle costs nothing, so a fault can be resolved
+-- with no request at all. And repeatable: parts today, a technician next week,
+-- so one fault can carry several.
+--
+-- Approving is what creates the expense, and `expense_id` records which one.
+-- That link is what makes "how much has this fridge cost us?" answerable —
+-- follow the fault to its requests, and the requests to their expenses.
+CREATE TABLE IF NOT EXISTS maintenance_requests (
+  id            SERIAL PRIMARY KEY,
+  issue_id      INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  amount        NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+  reason        TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'Pending'
+                  CHECK (status IN ('Pending', 'Approved', 'Declined')),
+  requested_by  TEXT,
+  decided_by    TEXT,
+  decided_at    TIMESTAMPTZ,
+  expense_id    INTEGER REFERENCES expenses(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_maint_requests_status
+  ON maintenance_requests (status, created_at DESC);
+  

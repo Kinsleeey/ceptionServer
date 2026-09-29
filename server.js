@@ -312,8 +312,11 @@ app.get("/api/issues", async (req, res) => {
         issue: i.issue,
         priority: i.priority,
         status: i.status,
-        reportedBy: i.reported_by,
+                reportedBy: i.reported_by,
         createdAt: i.created_at,
+        // Needed by the activity sheet: a fault reported last week and fixed
+        // today is TODAY's event, not last week's.
+        resolvedAt: i.resolved_at,
       })),
     });
   } catch (err) {
@@ -353,26 +356,47 @@ app.post("/api/issues", async (req, res) => {
 
 // PATCH /api/issues/:id — move a report along.
 app.patch("/api/issues/:id", async (req, res) => {
+  const { status } = req.body;
+  if (!["Received", "In Progress", "Resolved"].includes(status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+
+  const client = await db.connect();
   try {
-    const { status } = req.body;
-    if (!["Received", "In Progress", "Resolved"].includes(status)) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
-    const result = await db.query(
+    await client.query("BEGIN");
+
+    const result = await client.query(
       `UPDATE issues
           SET status = $1,
               resolved_at = CASE WHEN $1 = 'Resolved' THEN NOW() ELSE NULL END
         WHERE id = $2 RETURNING *`,
       [status, req.params.id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: "Report not found" });
+    if (result.rows.length === 0) throw new Error("Report not found");
+
+    // A fault that's fixed has nothing left to fund. Any request still sitting
+    // with the admin is moot, so it closes itself rather than staying live for
+    // someone to approve money against finished work.
+    if (status === "Resolved") {
+      await client.query(
+        `UPDATE maintenance_requests
+            SET status = 'Declined', decided_at = NOW(),
+                decided_by = 'Closed — fault resolved'
+          WHERE issue_id = $1 AND status = 'Pending'`,
+        [req.params.id]
+      );
+    }
+
+    await client.query("COMMIT");
     res.json(result.rows[0]);
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error("Update issue failed:", err.message);
-    res.status(500).json({ error: "Could not update the report" });
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
-
 
 // GET /api/rooms/activity?date=2026-08-14
 // Everything that happened across the rooms on one day, for the shift handover.
@@ -4150,12 +4174,23 @@ app.post("/api/issues/:id/requests", async (req, res) => {
     const issue = await db.query("SELECT id FROM issues WHERE id = $1", [req.params.id]);
     if (issue.rows.length === 0) return res.status(404).json({ error: "Fault not found" });
 
-    const result = await db.query(
+        const result = await db.query(
       `INSERT INTO maintenance_requests (issue_id, amount, reason, requested_by)
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [req.params.id, amount, reason.trim(), req.body.requested_by || "Maintenance"]
     );
+
+    // Asking for money IS starting work, so the fault moves itself along.
+    // Deriving it this way means nobody has to remember a "Start Work" button,
+    // and the state can't drift from what's actually happening.
+    await db.query(
+      `UPDATE issues SET status = 'In Progress'
+        WHERE id = $1 AND status = 'Received'`,
+      [req.params.id]
+    );
+
     res.status(201).json(result.rows[0]);
+
   } catch (err) {
     console.error("Create maintenance request failed:", err.message);
     res.status(400).json({ error: err.message });
@@ -4183,16 +4218,23 @@ app.patch("/api/maintenance/requests/:id/approve", async (req, res) => {
     await client.query("BEGIN");
 
     const found = await client.query(
-      `SELECT mr.*, i.issue, COALESCE(r.number, i.location) AS place
+        `SELECT mr.*, i.issue, i.status AS issue_status,
+          COALESCE(r.number, i.location) AS place
          FROM maintenance_requests mr
          JOIN issues i ON i.id = mr.issue_id
          LEFT JOIN rooms r ON r.id = i.room_id
-        WHERE mr.id = $1 FOR UPDATE`,
+          WHERE mr.id = $1
+          FOR UPDATE OF mr`,
       [id]
     );
     if (found.rows.length === 0) throw new Error("Request not found");
     const rq = found.rows[0];
+    
     if (rq.status !== "Pending") throw new Error("That request has already been decided");
+    // The fault may have been resolved since this screen was opened.
+    if (rq.issue_status === "Resolved") {
+      throw new Error("That fault has already been resolved — no money is needed");
+    }
 
     const unpaid = method === "Expenses Card";
     const today = todayString();
