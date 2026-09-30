@@ -1297,13 +1297,30 @@ app.post("/api/reservation-rooms/:id/checkin", async (req, res) => {
 // BAR — CATEGORIES & PRODUCTS
 // ===========================================================================
 
-// GET /api/bar-categories — the list of drink categories (for the filter pills).
+// GET /api/bar-categories?bar_location=Kitchen
+//
+// With a location, only categories that actually HAVE products there — so the
+// bar doesn't show "Main Course" and the kitchen doesn't show "Spirits".
+// Derived from the products rather than stored on the category, so adding a
+// dish to a new category is all it takes.
 app.get("/api/bar-categories", async (req, res) => {
   try {
-    const result = await db.query("SELECT * FROM bar_categories ORDER BY id");
+    const { bar_location } = req.query;
+
+    const result = bar_location
+      ? await db.query(
+          `SELECT DISTINCT c.id, c.name
+             FROM bar_categories c
+             JOIN products p ON p.category_id = c.id
+            WHERE p.bar_location = $1
+            ORDER BY c.name`,
+          [bar_location]
+        )
+      : await db.query("SELECT * FROM bar_categories ORDER BY name");
+
     res.json(result.rows);
   } catch (err) {
-    console.error("Error fetching categories:", err.message);
+    console.error("Fetch bar categories failed:", err.message);
     res.status(500).json({ error: "Could not fetch categories" });
   }
 });
@@ -3071,11 +3088,18 @@ app.get("/api/accounting/overview", async (req, res) => {
         WHERE EXTRACT(YEAR FROM check_in) = $1
         GROUP BY 1`, [year]);
 
-    // --- Sales: bar, by month ---
+        // --- Sales: bar, by month (the kitchen is counted separately) ---
     const bar = await db.query(
       `SELECT EXTRACT(MONTH FROM created_at) AS m, COALESCE(SUM(total),0) AS total
          FROM orders
-        WHERE EXTRACT(YEAR FROM created_at) = $1
+        WHERE EXTRACT(YEAR FROM created_at) = $1 AND bar_location <> 'Kitchen'
+        GROUP BY 1`, [year]);
+
+    // --- Sales: kitchen ---
+    const kitchen = await db.query(
+      `SELECT EXTRACT(MONTH FROM created_at) AS m, COALESCE(SUM(total),0) AS total
+         FROM orders
+        WHERE EXTRACT(YEAR FROM created_at) = $1 AND bar_location = 'Kitchen'
         GROUP BY 1`, [year]);
 
     // --- Sales owed: anything that went on a corporate tab ---
@@ -3142,6 +3166,7 @@ app.get("/api/accounting/overview", async (req, res) => {
 
     const roomsArr = byMonth(rooms.rows);
     const barArr = byMonth(bar.rows);
+    const kitchenArr = byMonth(kitchen.rows);
     const owedArr = byMonth(owedStays.rows).map(
       (v, i) => v + byMonth(owedOrders.rows)[i]);
     const expArr = byMonth(expenses.rows);
@@ -3149,9 +3174,8 @@ app.get("/api/accounting/overview", async (req, res) => {
     const months = MONTH_NAMES.map((name, i) => ({
       month: name,
       rooms: roomsArr[i],
-      // Store sales aren't a thing yet — the store issues stock internally
-      // rather than selling it. Left at 0 until that's decided.
       bar: barArr[i],
+      kitchen: kitchenArr[i],
       salesOwed: owedArr[i],
       expenses: expArr[i],
       salesPaid: kind("sales_paid")[i],
@@ -3210,9 +3234,21 @@ app.get("/api/accounting/overview/daily", async (req, res) => {
          FROM stays WHERE check_in >= $1::date AND check_in < $2::date GROUP BY 1`,
       [first, afterLast]);
 
+    // Drinks only — the kitchen is counted separately below.
     const bar = await db.query(
       `SELECT EXTRACT(DAY FROM created_at) AS d, COALESCE(SUM(total),0) AS total
-         FROM orders WHERE created_at >= $1::date AND created_at < $2::date GROUP BY 1`,
+         FROM orders
+        WHERE created_at >= $1::date AND created_at < $2::date
+          AND bar_location <> 'Kitchen'
+        GROUP BY 1`,
+      [first, afterLast]);
+
+    const kitchen = await db.query(
+      `SELECT EXTRACT(DAY FROM created_at) AS d, COALESCE(SUM(total),0) AS total
+         FROM orders
+        WHERE created_at >= $1::date AND created_at < $2::date
+          AND bar_location = 'Kitchen'
+        GROUP BY 1`,
       [first, afterLast]);
 
     const owedStays = await db.query(
@@ -3273,6 +3309,7 @@ app.get("/api/accounting/overview/daily", async (req, res) => {
 
     const roomsArr = byDay(rooms.rows);
     const barArr = byDay(bar.rows);
+    const kitchenArr = byDay(kitchen.rows);
     const owedA = byDay(owedStays.rows);
     const owedB = byDay(owedOrders.rows);
     const expArr = byDay(expenses.rows);
@@ -3283,6 +3320,7 @@ app.get("/api/accounting/overview/daily", async (req, res) => {
       date: `${year}-${String(month).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`,
       rooms: roomsArr[i],
       bar: barArr[i],
+      kitchen: kitchenArr[i],
       salesOwed: owedA[i] + owedB[i],
       expenses: expArr[i],
       salesPaid: kind("sales_paid")[i],
@@ -3364,20 +3402,30 @@ app.get("/api/accounting/sales", async (req, res) => {
     }
 
     // --- Bar sales ---
-    if (!department || department === "All" || department === "Bar") {
+    // One query for both — same table, the filter just decides which
+    // locations count.
+    if (!department || department === "All" || department === "Bar" || department === "Kitchen") {
       const orders = await db.query(
         `SELECT o.id, o.bar_location, o.total, o.payment_method, o.created_at,
                 (SELECT COALESCE(SUM(quantity),0) FROM order_items oi WHERE oi.order_id = o.id) AS items
            FROM orders o
           WHERE ($1::date IS NULL OR o.created_at >= $1::date)
             AND ($2::date IS NULL OR o.created_at < ($2::date + 1))
+            -- $3 is null for "All", so both bar and kitchen orders come back.
+            AND ($3::text IS NULL
+                 OR ($3 = 'Kitchen' AND o.bar_location =  'Kitchen')
+                 OR ($3 = 'Bar'     AND o.bar_location <> 'Kitchen'))
           ORDER BY o.created_at DESC`,
-        [from || null, to || null]
+        [from || null, to || null,
+         department === "Bar" || department === "Kitchen" ? department : null]
       );
 
       for (const o of orders.rows) {
         rows.push({
-          id: `order-${o.id}`, refId: o.id, source: "Bar",
+          id: `order-${o.id}`, refId: o.id,
+          // The row must say which counter it came from, or a kitchen sale
+          // would show as a bar sale on the Sales page.
+          source: o.bar_location === "Kitchen" ? "Kitchen" : "Bar",
           date: toDateString(o.created_at),
           time: new Date(o.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
           description: `${o.bar_location} · ${o.items} item${Number(o.items) === 1 ? "" : "s"}`,

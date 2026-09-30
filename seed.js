@@ -55,7 +55,7 @@ const starterRooms = roomPlan.flatMap((plan) =>
 );
 
 // Bar categories to seed. Products reference these by id.
-const starterCategories = ["Spirits", "Beer", "Wine", "Cocktails", "Smoothie", "Water"];
+
 
 // Starter drinks. `category` is the NAME (we look up its id during seeding).
 // `price` is a plain number; `unit` is what one unit is (Shot, Bottle, etc.).
@@ -72,6 +72,57 @@ const starterProducts = [
   { name: "Berry Smoothie", category: "Smoothie", price: 3200, bar_location: "Lounge", unit: "Cup" },
   { name: "Eva Water", category: "Water", price: 500, bar_location: "Lounge", unit: "Bottle" },
   { name: "Sparkling Water", category: "Water", price: 1500, bar_location: "Bar 1", unit: "Bottle" },
+    // --- Kitchen ---------------------------------------------------------
+  // Priced per portion, so a plate is built from several lines: rice, a
+  // protein, and whatever extras the guest wants.
+
+  // Rice
+  { name: "Jollof Rice",        price: 2500, category: "Rice",      bar_location: "Kitchen", unit: "Portion" },
+  { name: "Fried Rice",         price: 2800, category: "Rice",      bar_location: "Kitchen", unit: "Portion" },
+  { name: "White Rice & Stew",  price: 2200, category: "Rice",      bar_location: "Kitchen", unit: "Portion" },
+  { name: "Coconut Rice",       price: 3000, category: "Rice",      bar_location: "Kitchen", unit: "Portion" },
+
+  // Swallow
+  { name: "Pounded Yam",        price: 1500, category: "Swallow",   bar_location: "Kitchen", unit: "Wrap" },
+  { name: "Eba",                price: 1000, category: "Swallow",   bar_location: "Kitchen", unit: "Wrap" },
+  { name: "Semovita",           price: 1200, category: "Swallow",   bar_location: "Kitchen", unit: "Wrap" },
+  { name: "Amala",              price: 1200, category: "Swallow",   bar_location: "Kitchen", unit: "Wrap" },
+
+  // Soups
+  { name: "Egusi Soup",         price: 2500, category: "Soups",     bar_location: "Kitchen", unit: "Bowl" },
+  { name: "Ogbono Soup",        price: 2500, category: "Soups",     bar_location: "Kitchen", unit: "Bowl" },
+  { name: "Vegetable Soup",     price: 2800, category: "Soups",     bar_location: "Kitchen", unit: "Bowl" },
+  { name: "Okra Soup",          price: 2300, category: "Soups",     bar_location: "Kitchen", unit: "Bowl" },
+  { name: "Pepper Soup",        price: 3500, category: "Soups",     bar_location: "Kitchen", unit: "Bowl" },
+
+  // Protein
+  { name: "Chicken",            price: 2500, category: "Protein",   bar_location: "Kitchen", unit: "Piece" },
+  { name: "Beef",               price: 1500, category: "Protein",   bar_location: "Kitchen", unit: "Piece" },
+  { name: "Turkey",             price: 3500, category: "Protein",   bar_location: "Kitchen", unit: "Piece" },
+  { name: "Goat Meat",          price: 2800, category: "Protein",   bar_location: "Kitchen", unit: "Piece" },
+  { name: "Fried Fish",         price: 3000, category: "Protein",   bar_location: "Kitchen", unit: "Piece" },
+  { name: "Ponmo",              price: 1000, category: "Protein",   bar_location: "Kitchen", unit: "Piece" },
+  { name: "Snail",              price: 4000, category: "Protein",   bar_location: "Kitchen", unit: "Piece" },
+
+  // Extras
+  { name: "Fried Plantain",     price: 1000, category: "Extras",    bar_location: "Kitchen", unit: "Portion" },
+  { name: "Salad",              price: 1500, category: "Extras",    bar_location: "Kitchen", unit: "Portion" },
+  { name: "Coleslaw",           price: 1200, category: "Extras",    bar_location: "Kitchen", unit: "Portion" },
+  { name: "Moi Moi",            price: 1000, category: "Extras",    bar_location: "Kitchen", unit: "Wrap" },
+  { name: "Chips",              price: 1800, category: "Extras",    bar_location: "Kitchen", unit: "Portion" },
+  { name: "Boiled Yam",         price: 1200, category: "Extras",    bar_location: "Kitchen", unit: "Portion" },
+
+  // Grills
+  { name: "Suya",               price: 3500, category: "Grills",    bar_location: "Kitchen", unit: "Wrap" },
+  { name: "Grilled Tilapia",    price: 8500, category: "Grills",    bar_location: "Kitchen", unit: "Whole" },
+  { name: "Peppered Gizzard",   price: 3000, category: "Grills",    bar_location: "Kitchen", unit: "Portion" },
+  { name: "Asun",               price: 4000, category: "Grills",    bar_location: "Kitchen", unit: "Portion" },
+
+  // Breakfast
+  { name: "Akara & Pap",        price: 1500, category: "Breakfast", bar_location: "Kitchen", unit: "Plate" },
+  { name: "Bread & Egg",        price: 1800, category: "Breakfast", bar_location: "Kitchen", unit: "Plate" },
+  { name: "Yam & Egg Sauce",    price: 2200, category: "Breakfast", bar_location: "Kitchen", unit: "Plate" },
+  { name: "Tea & Bread",        price: 1200, category: "Breakfast", bar_location: "Kitchen", unit: "Plate" },
 ];
 
 // Store categories to seed. Stock items reference these by id.
@@ -85,6 +136,7 @@ const starterStockCategories = [
   "Spirits", "Beer", "Wine", "Water",
   // everything else the store keeps
   "Food", "Frozen Food", "Housekeeping", "Kitchen", "Maintenance",
+  
 ];
 
 // Starter stock. `category` is the NAME (we look up its id during seeding).
@@ -176,6 +228,14 @@ const starterAmenities = [
   "Air Conditioner", "Television", "Mini Fridge", "Wardrobe",
   "WiFi", "Balcony", "Safe", "Kettle",
 ];
+const starterBarCategories = [
+  // bar
+  "Spirits", "Beer", "Wine", "Cocktails", "Smoothie", "Water",
+  // kitchen — components, not set plates. A guest orders jollof rice AND
+  // chicken AND plantain as three lines, which is how it's actually sold and
+  // how it has to be priced.
+  "Rice", "Swallow", "Soups", "Protein", "Extras", "Grills", "Breakfast",
+];
 
 // What each CATEGORY typically has, so the seeder can fill every room without
 // listing 30 rooms by hand. `null` means the room doesn't have it at all.
@@ -219,6 +279,26 @@ async function seed() {
     // The `reservations` HEADERS are not caught by that, though: they reference
     // guests, not rooms. Clear them explicitly or you'd be left with empty
     // reservations whose rooms have been wiped.
+    // Clear the transactional tables first, explicitly.
+    //
+    // The CASCADEs below only reach tables that reference what's being
+    // truncated. Several don't: `guests` grew on every re-seed, old `orders`
+    // survived, and `stock_requests` / `maintenance_requests` headers were
+    // left pointing at rows that had just been deleted — so the app showed
+    // requests whose items and faults no longer existed.
+    //
+    // Order matters: children before parents.
+    await db.query("TRUNCATE cart_items RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE order_items RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE orders RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE maintenance_requests RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE stock_request_items RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE stock_requests RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE issues RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE stay_guests RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE stays RESTART IDENTITY CASCADE");
+    await db.query("TRUNCATE guests RESTART IDENTITY CASCADE");
+
     await db.query("TRUNCATE reservations RESTART IDENTITY CASCADE");
     await db.query("TRUNCATE rooms RESTART IDENTITY CASCADE");
 
@@ -316,12 +396,13 @@ async function seed() {
     // ---- Bar categories ----
     console.log("→ Clearing & inserting bar categories...");
     // CASCADE clears products + cart_items that reference categories too.
+    await db.query("TRUNCATE products RESTART IDENTITY CASCADE");
     await db.query("TRUNCATE bar_categories RESTART IDENTITY CASCADE");
 
     // Insert each category and remember its new id, keyed by name, so products
     // can look up the right category_id below.
     const categoryIdByName = {};
-    for (const cname of starterCategories) {
+    for (const cname of starterBarCategories) {
       const result = await db.query(
         "INSERT INTO bar_categories (name) VALUES ($1) RETURNING id",
         [cname]
